@@ -225,9 +225,11 @@ export class ActorConnRaw {
 		if ("getForId" in actorResolutionState) {
 			this.#actorId = actorResolutionState.getForId.actorId;
 		}
+		// `ready` rejects on dispose and on a permanent open failure. Both are
+		// expected outcomes, so an unobserved rejection is not worth a warning.
 		this.#readyPromise = promiseWithResolvers((reason) =>
-			logger().warn({
-				msg: "unhandled ready promise rejection",
+			logger().debug({
+				msg: "ready promise rejected",
 				reason,
 			}),
 		);
@@ -516,6 +518,7 @@ export class ActorConnRaw {
 
 			this.#clearQueuedMessages();
 			this.#rejectPendingPromises(actorError, false);
+			this.#readyPromise.reject(actorError);
 			this.#dispatchActorError(actorError);
 			this.#setConnStatus("idle");
 
@@ -1513,6 +1516,10 @@ export class ActorConnRaw {
 		this.#disposed = true;
 
 		logger().debug({ msg: "disposing actor conn" });
+
+		// Settle `ready` for callers still waiting on the first open. This is
+		// a no-op if the connection already opened once.
+		this.#readyPromise.reject(new errors.ActorConnDisposed());
 
 		// Set status to Idle (intentionally closed, no auto-reconnect)
 		this.#setConnStatus("idle");
