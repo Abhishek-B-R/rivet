@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
-import { joinSignals } from "./utils";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { interval, joinSignals } from "./utils";
 
 describe("joinSignals", () => {
 	test("returns a non-aborted signal when no inputs are provided", () => {
@@ -30,5 +30,51 @@ describe("joinSignals", () => {
 		expect(signal.aborted).toBe(false);
 		controllerB.abort("stopped");
 		expect(signal.aborted).toBe(true);
+	});
+});
+
+describe("interval", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	test("ticks at a fixed rate when the loop body takes time", async () => {
+		vi.useFakeTimers();
+		const start = performance.now();
+		const tick = interval(100);
+		const ticks: number[] = [];
+
+		for (let i = 0; i < 3; i++) {
+			const next = tick();
+			await vi.advanceTimersToNextTimerAsync();
+			await next;
+			ticks.push(performance.now() - start);
+			// Simulate 30ms of work in the loop body.
+			vi.advanceTimersByTime(30);
+		}
+
+		expect(ticks).toEqual([100, 200, 300]);
+	});
+
+	test("skips missed ticks instead of bursting after a long pause", async () => {
+		vi.useFakeTimers();
+		const start = performance.now();
+		const tick = interval(100);
+
+		const first = tick();
+		await vi.advanceTimersToNextTimerAsync();
+		await first;
+		// The loop body overruns by more than two periods.
+		vi.advanceTimersByTime(250);
+
+		const late = tick();
+		await vi.advanceTimersToNextTimerAsync();
+		await late;
+		expect(performance.now() - start).toBe(350);
+
+		const next = tick();
+		await vi.advanceTimersToNextTimerAsync();
+		await next;
+		expect(performance.now() - start).toBe(450);
 	});
 });

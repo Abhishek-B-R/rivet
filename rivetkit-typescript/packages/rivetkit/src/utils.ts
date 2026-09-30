@@ -87,6 +87,10 @@ export function sleep(ms: number): Promise<void> {
 /**
  * Creates a fixed-rate interval tick function that can be awaited in a loop.
  *
+ * Time spent in the loop body counts toward the interval. If the body runs
+ * longer than one interval, the next tick resolves immediately and the missed
+ * ticks are skipped.
+ *
  * @example
  * const tick = interval(100);
  * while (!c.aborted) {
@@ -98,7 +102,18 @@ export function sleep(ms: number): Promise<void> {
  * @experimental
  */
 export function interval(ms: number): () => Promise<void> {
-	return () => sleep(ms);
+	let nextTick: number | undefined;
+	return () => {
+		// Monotonic clock, so a wall clock adjustment cannot stall the loop.
+		const now = performance.now();
+		nextTick = nextTick === undefined ? now + ms : nextTick + ms;
+		// If the loop fell behind, tick right away and restart the schedule
+		// from now instead of firing a burst of missed ticks.
+		if (nextTick < now) {
+			nextTick = now;
+		}
+		return sleep(nextTick - now);
+	};
 }
 
 export const VERSION = pkgJson.version;
