@@ -29,6 +29,15 @@ export async function prepareRetryableInit(
 }
 
 /**
+ * Resolves a raw actor path against the actor root. Dot segments such as
+ * `../` stop at the root, so a raw request cannot climb out of the
+ * `/request/` or `/websocket/` prefix it is sent under.
+ */
+function resolveActorPath(path: string): URL {
+	return new URL(`http://actor/${path}`);
+}
+
+/**
  * Shared implementation for raw HTTP fetch requests
  */
 export async function rawHttpFetch(
@@ -102,7 +111,10 @@ export async function rawHttpFetch(
 
 		// Build the URL with normalized path
 		const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
-		const url = new URL(`http://actor/request/${normalizedPath}`);
+		const actorPath = resolveActorPath(normalizedPath);
+		const url = new URL(
+			`http://actor/request${actorPath.pathname}${actorPath.search}`,
+		);
 
 		// Forward conn params if provided
 		const proxyRequestHeaders = new Headers(mergedInit.headers);
@@ -160,6 +172,7 @@ export async function rawWebSocket(
 		if (pathPortion.startsWith("/")) {
 			pathPortion = pathPortion.slice(1);
 		}
+		pathPortion = resolveActorPath(pathPortion).pathname.slice(1);
 	}
 
 	const fullPath = `${PATH_WEBSOCKET_PREFIX}${pathPortion}${queryPortion}`;
